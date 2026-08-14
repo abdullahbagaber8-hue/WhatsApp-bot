@@ -1,23 +1,23 @@
 name: نشر صفحة العرض
 
-# ينشر مجلد demo/ على GitHub Pages ليصبح الرابط قابلاً للمشاركة مع العميل
-# دون تسجيل دخول. يعمل تلقائياً عند تعديل الصفحة، أو يدوياً من تبويب Actions.
+# ينشر صفحة العرض على GitHub Pages عبر فرع gh-pages.
+#
+# لماذا فرع بدل نشر Actions المباشر: تفعيل Pages برمجياً يحتاج صلاحية
+# لا يملكها توكن الـ workflow هنا (Resource not accessible by integration)،
+# بينما الدفع إلى gh-pages فعّل الموقع تلقائياً.
 
 on:
   push:
     branches: [claude/whatsapp-case-tracking-bot-co2lw5]
     paths:
-      - 'demo/**'
+      - 'demo/standalone.html'
       - 'scripts/build-demo.js'
       - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# نشر واحد في كل مرة، دون إلغاء نشر جارٍ
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -25,9 +25,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,23 +32,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: تهيئة Pages
-        id: pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      # نبني الصفحة داخل الـ workflow لأن رابط النشر لا يُعرف إلا هنا،
-      # وهو مطلوب لمعاينة الرابط عند إرساله في واتساب.
       - name: بناء الصفحة برابط النشر
         env:
-          DEMO_URL: ${{ steps.pages.outputs.base_url }}
+          DEMO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
         run: npm run build:demo
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: demo
+      - name: تجهيز محتوى النشر
+        run: |
+          mkdir -p site
+          cp demo/index.html demo/preview.png site/
+          touch site/.nojekyll
 
-      - name: النشر
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: النشر على gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          commit_message: 'تحديث صفحة العرض'
