@@ -1,0 +1,21 @@
+{
+  "name": "whatsapp-case-tracking-bot",
+  "version": "0.1.0",
+  "description": "WhatsApp bot that lets law-firm clients check their case status from an Excel sheet",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node scripts/generate-sample-data.js",
+    "test": "node --test \"tests/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "xlsx": "^0.18.5"
+  }
+}
