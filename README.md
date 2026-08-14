@@ -23,6 +23,43 @@ npm test         # 21 اختباراً تغطي الخصوصية والتدفق 
 
 ---
 
+## صفحة العرض للعميل (رابط مستقل)
+
+لعرض الفكرة على المحامي دون تشغيل أي خادم، هناك صفحة واحدة مستقلة تحوي المنطق والبيانات الوهمية بداخلها:
+
+```bash
+npm run build:demo                                  # يبني demo/index.html
+DEMO_URL=https://demo.example.com npm run build:demo # مع معاينة الرابط في واتساب
+```
+
+`demo/index.html` ملف ساكن واحد — يُفتح مباشرة بالمتصفح، أو يُرفع على أي استضافة.
+
+**الرفع على نفس سيرفر Oracle:**
+
+```bash
+sudo mkdir -p /var/www/case-demo
+sudo cp demo/index.html demo/preview.png /var/www/case-demo/
+```
+
+ثم كتلة Nginx على نطاق فرعي:
+
+```nginx
+server {
+    server_name demo.example.com;
+    root /var/www/case-demo;
+    index index.html;
+}
+```
+
+و `sudo certbot --nginx -d demo.example.com` لتفعيل HTTPS.
+
+بديل بلا نطاق فرعي: انسخ الملفات إلى مجلد داخل موقع العميل الحالي (`/var/www/site/case-demo/`) فيصبح الرابط `https://example.com/case-demo/`.
+
+> `demo/standalone.html` هو المصدر، و `demo/index.html` مبني منه — عدّل المصدر ثم أعد البناء.
+> الصفحة تعكس منطق `src/bot/` لكنها نسخة منه؛ عند تغيير نصوص الردود تُحدَّث في الاثنين.
+
+---
+
 ## الأمان: كيف يتم التحقق من الهوية
 
 **رقم جوال المرسل هو الهوية.** البوت يجلب القضايا المرتبطة برقم الواتساب المرسِل فقط، ولا يوجد في النظام أي بحث عام برقم القضية.
@@ -163,6 +200,11 @@ server {
 ## هيكل المشروع
 
 ```
+demo/
+├── standalone.html          مصدر صفحة العرض المستقلة (المنطق والبيانات بداخلها)
+├── index.html               مبني من المصدر — هذا ما يُرفع على الاستضافة
+└── preview.png              صورة معاينة الرابط عند إرساله في واتساب
+
 src/
 ├── index.js                 نقطة التشغيل وربط المسارات
 ├── config.js                كل الإعدادات من متغيرات البيئة

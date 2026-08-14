@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#172026" />
+  <meta name="description" content="جرّب كيف يستعلم عملاء المكتب عن حالة قضاياهم عبر واتساب. نسخة تجريبية على بيانات وهمية." />
+  <meta name="robots" content="noindex" />
+  <title>خدمة الاستعلام الآلي عن القضايا</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%22.9em%22%20font-size%3D%2290%22%3E%E2%9A%96%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E" />
+  <!-- لتفعيل معاينة الرابط في واتساب: DEMO_URL=https://your-domain npm run build:demo -->
+  <style>
+    /* إعادة ضبط بسيطة — المنصة كانت توفّرها، ونوفّرها هنا بأنفسنا */
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+<style>
+  /*
+    نسخة مستقلة للعرض: كل المنطق والبيانات داخل هذه الصفحة، بلا خادم.
+    تعكس src/bot/handler.js و src/bot/messages.js — أي تعديل في الردود يُنقل للاثنين.
+    التزام مقصود بمظهر واحد (داكن) لأن المحادثة يجب أن تبدو كواتساب حقيقي.
+  */
+  :root {
+    --ink: #0f1519;
+    --surface: #172026;
+    --raised: #1e2a31;
+    --line: #26333b;
+    --line-soft: #1d272d;
+    --text: #e7eef1;
+    --muted: #8fa3ad;
+    --brass: #c9a227;
+    --brass-dim: #6b5716;
+
+    /* ألوان واتساب داخل إطار الجوال فقط */
+    --wa-bg: #0b141a;
+    --wa-header: #202c33;
+    --wa-in: #202c33;
+    --wa-out: #005c4b;
+    --wa-text: #e9edef;
+    --wa-muted: #8696a0;
+
+    --font: -apple-system, BlinkMacSystemFont, "SF Arabic", "Segoe UI",
+            "Noto Sans Arabic", "Noto Naskh Arabic", Tahoma, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--font);
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- شريط العنوان ---------- */
+  .topbar {
+    flex: none;
+    padding: 12px 16px 11px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .topbar h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+  .topbar .tag {
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    color: var(--brass);
+    border: 1px solid var(--brass-dim);
+    border-radius: 4px;
+    padding: 2px 7px;
+    text-transform: uppercase;
+    flex: none;
+  }
+  .topbar .note {
+    margin-inline-start: auto;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ---------- اختيار الشخصية ---------- */
+  .personas {
+    flex: none;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px 11px;
+  }
+  .personas .label {
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin: 0 4px 8px;
+    text-transform: uppercase;
+  }
+  .strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .strip::-webkit-scrollbar { display: none; }
+
+  .persona {
+    flex: none;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: inherit;
+    text-align: right;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    min-width: 132px;
+  }
+  .persona:hover { background: #24323a; }
+  .persona:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .persona[aria-pressed="true"] {
+    border-color: var(--brass);
+    background: #221f14;
+  }
+  .persona b { display: block; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .persona span {
+    display: block;
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .persona.stranger[aria-pressed="true"] { border-color: #a4553a; background: #241a16; }
+
+  /* ---------- المحادثة ---------- */
+  .phone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--wa-bg);
+  }
+  .wa-header {
+    flex: none;
+    background: var(--wa-header);
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    border-bottom: 1px solid #0a1418;
+  }
+  .seal {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(145deg, #1f7a63, #005c4b);
+    display: grid; place-items: center;
+    font-size: 16px; flex: none;
+  }
+  .wa-header .who { font-size: 14px; font-weight: 600; color: var(--wa-text); }
+  .wa-header .sub {
+    font-size: 11px; color: var(--wa-muted); margin-top: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    background-image:
+      radial-gradient(circle at 15% 20%, rgba(32,63,74,.35) 0%, transparent 42%),
+      radial-gradient(circle at 85% 75%, rgba(32,63,74,.28) 0%, transparent 42%);
+    overscroll-behavior: contain;
+  }
+
+  .msg {
+    max-width: 84%;
+    padding: 7px 11px 5px;
+    border-radius: 9px;
+    font-size: 14.5px;
+    line-height: 1.62;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--wa-text);
+    animation: rise .2s ease-out;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .msg { animation: none; }
+  }
+  .msg.out { background: var(--wa-out); align-self: flex-start; border-top-right-radius: 2px; }
+  .msg.in  { background: var(--wa-in);  align-self: flex-end;   border-top-left-radius: 2px; }
+  .msg strong { font-weight: 700; }
+  .msg em { font-style: normal; color: var(--wa-muted); font-size: 12.5px; }
+  .msg .t {
+    display: block; text-align: left; direction: ltr;
+    font-size: 10px; color: rgba(233,237,239,.45); margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .sysline {
+    align-self: center;
+    background: rgba(30,42,49,.9);
+    color: var(--wa-muted);
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 7px;
+    margin: 4px 0;
+    text-align: center;
+  }
+  .typing {
+    align-self: flex-end;
+    background: var(--wa-in);
+    border-radius: 9px;
+    padding: 10px 14px;
+    display: flex;
+    gap: 4px;
+  }
+  .typing i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--wa-muted);
+    animation: blink 1.3s infinite;
+  }
+  .typing i:nth-child(2) { animation-delay: .18s; }
+  .typing i:nth-child(3) { animation-delay: .36s; }
+  @keyframes blink { 0%,60%,100% { opacity: .3; } 30% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .typing i { animation: none; opacity: .6; }
+  }
+
+  /* ---------- اقتراحات + الإدخال ---------- */
+  .suggest {
+    flex: none;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 9px 12px;
+    background: var(--wa-bg);
+    border-top: 1px solid #101d24;
+    scrollbar-width: none;
+  }
+  .suggest::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none;
+    background: transparent;
+    border: 1px solid #2c3e47;
+    color: var(--wa-muted);
+    border-radius: 14px;
+    padding: 6px 13px;
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+  }
+  .chip:hover { color: var(--wa-text); border-color: #46606c; }
+  .chip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  form {
+    flex: none;
+    display: flex;
+    gap: 8px;
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+    background: var(--wa-header);
+  }
+  #input {
+    flex: 1;
+    min-width: 0;
+    background: #2a3942;
+    border: 1px solid transparent;
+    color: var(--wa-text);
+    border-radius: 21px;
+    padding: 11px 17px;
+    font-size: 16px; /* 16px يمنع تكبير الصفحة تلقائياً على iOS */
+    font-family: inherit;
+    outline: none;
+  }
+  #input::placeholder { color: var(--wa-muted); }
+  #input:focus { border-color: #3d5058; }
+  #send {
+    flex: none;
+    width: 43px; height: 43px;
+    border: 0; border-radius: 50%;
+    background: #00a884;
+    color: #05241c;
+    font-size: 18px;
+    cursor: pointer;
+    display: grid; place-items: center;
+  }
+  #send:disabled { opacity: .45; cursor: default; }
+  #send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  @media (min-width: 760px) {
+    body { align-items: center; }
+    .topbar, .personas { width: 100%; }
+    .phone {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+      border-inline: 1px solid var(--line-soft);
+    }
+    .msg { max-width: 76%; }
+  }
+</style>
+
+<div class="topbar">
+  <h1>محاكي بوت متابعة القضايا</h1>
+  <span class="tag">demo</span>
+  <span class="note">بيانات وهمية</span>
+</div>
+
+<div class="personas">
+  <p class="label">تحدّث بصفة</p>
+  <div class="strip" id="personas"></div>
+</div>
+
+<div class="phone">
+  <div class="wa-header">
+    <div class="seal">⚖️</div>
+    <div>
+      <div class="who" id="peerName">مكتب المحاماة</div>
+      <div class="sub" id="peerPhone">متصل الآن</div>
+    </div>
+  </div>
+
+  <div id="chat" role="log" aria-live="polite"></div>
+
+  <div class="suggest" id="suggest"></div>
+
+  <form id="composer" autocomplete="off">
+    <input id="input" type="text" placeholder="اكتب رسالتك…" aria-label="نص الرسالة" />
+    <button id="send" type="submit" aria-label="إرسال">➤</button>
+  </form>
+</div>
+
+<script>
+/* ==========================================================================
+   1) البيانات — نسخة من data/cases.xlsx التجريبي
+   ========================================================================== */
+const CASES = [
+  { case_number:'1445/ت/2301', client_name:'محمد عبدالله السالم', client_phone:'966501234567',
+    case_type:'تجاري', court:'المحكمة التجارية بالرياض', status:'قيد المرافعة',
+    next_hearing_date:'2026-09-03', next_hearing_time:'10:30',
+    last_update_note:'تم تقديم المذكرة الجوابية وننتظر رد الطرف الآخر', assigned_lawyer:'أ. خالد الحربي' },
+  { case_number:'1445/ع/1180', client_name:'محمد عبدالله السالم', client_phone:'966501234567',
+    case_type:'عمالي', court:'المحكمة العمالية بالرياض', status:'صدر الحكم الابتدائي',
+    next_hearing_date:'', next_hearing_time:'',
+    last_update_note:'صدر الحكم لصالح الموكل، ومدة الاعتراض تنتهي 2026-08-28', assigned_lawyer:'أ. خالد الحربي' },
+  { case_number:'1445/ح/0742', client_name:'نورة سعد القحطاني', client_phone:'966555987654',
+    case_type:'أحوال شخصية', court:'محكمة الأحوال الشخصية بجدة', status:'بانتظار تحديد موعد الجلسة',
+    next_hearing_date:'', next_hearing_time:'',
+    last_update_note:'تم قيد الدعوى وننتظر إشعار المحكمة بموعد الجلسة الأولى', assigned_lawyer:'أ. سارة العتيبي' },
+  { case_number:'1446/ت/0055', client_name:'شركة الأفق للمقاولات', client_phone:'966533112244',
+    case_type:'تجاري', court:'المحكمة التجارية بالدمام', status:'قيد المرافعة',
+    next_hearing_date:'2026-08-19', next_hearing_time:'09:00',
+    last_update_note:'الجلسة القادمة لتبادل المذكرات، يرجى إحضار أصل العقد', assigned_lawyer:'أ. خالد الحربي' },
+  { case_number:'1446/ج/0311', client_name:'فهد ناصر الدوسري', client_phone:'966544778899',
+    case_type:'جزائي', court:'المحكمة الجزائية بالرياض', status:'مؤجلة',
+    next_hearing_date:'2026-10-12', next_hearing_time:'11:15',
+    last_update_note:'أُجلت الجلسة بناءً على طلب الادعاء لاستكمال التحقيق', assigned_lawyer:'أ. سارة العتيبي' },
+  { case_number:'1446/ن/0902', client_name:'عبدالرحمن يوسف الزهراني', client_phone:'966566334455',
+    case_type:'تنفيذ', court:'محكمة التنفيذ بالرياض', status:'قيد التنفيذ',
+    next_hearing_date:'', next_hearing_time:'',
+    last_update_note:'تم إيقاع الحجز على حسابات المنفذ ضده', assigned_lawyer:'أ. خالد الحربي' },
+];
+
+const OFFICE_NAME = 'مكتب المحاماة';
+const OFFICE_CONTACT = '0500000000';
+
+/* ==========================================================================
+   2) أدوات — مطابقة src/utils/phone.js و excelStore.js
+   ========================================================================== */
+const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩', FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+
+const toLatin = (s) => String(s ?? '').replace(/[٠-٩۰-۹]/g, (c) => {
+  const a = AR_DIGITS.indexOf(c);
+  return a !== -1 ? String(a) : String(FA_DIGITS.indexOf(c));
+});
+
+function normalizePhone(input) {
+  let d = toLatin(input).replace(/[^\d]/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = '966' + d.slice(1);
+  else if (d.length === 9 && d.startsWith('5')) d = '966' + d;
+  return d.length >= 10 ? d : '';
+}
+
+const caseKey = (v) => String(v ?? '').replace(/[\s\-–—_/\\.]+/g, '').toLowerCase();
+
+const normalizeArabic = (v) => String(v ?? '')
+  .replace(/[ً-ْٰ]/g, '')
+  .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+  .replace(/\s+/g, ' ').trim().toLowerCase();
+
+const INDEX = CASES.map((c) => ({
+  ...c,
+  phone_normalized: normalizePhone(c.client_phone),
+  case_key: caseKey(c.case_number),
+  name_normalized: normalizeArabic(c.client_name),
+}));
+
+const findByPhone = (phone) => {
+  const p = normalizePhone(phone);
+  return p ? INDEX.filter((c) => c.phone_normalized === p) : [];
+};
+
+/* البحث برقم القضية داخل قضايا هذا الرقم فقط — أساس الخصوصية */
+function findCaseForPhone(phone, query) {
+  const owned = findByPhone(phone);
+  const k = caseKey(query);
+  if (!k) return null;
+  return owned.find((c) => c.case_key === k)
+      ?? owned.find((c) => c.case_key.endsWith(k) && k.length >= 4)
+      ?? null;
+}
+
+function findByNameForPhone(phone, query) {
+  const needle = normalizeArabic(query);
+  if (needle.length < 3) return [];
+  return findByPhone(phone).filter((c) => c.name_normalized.includes(needle));
+}
+
+/* ==========================================================================
+   3) نصوص الردود — مطابقة src/bot/messages.js
+   ========================================================================== */
+const WEEKDAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+function formatHearingDate(value) {
+  if (!value) return '';
+  const d = new Date(value + 'T00:00:00');
+  return isNaN(d) ? value : WEEKDAYS[d.getDay()] + ' ' + value;
+}
+
+const DISCLAIMER = 'هذه الخدمة للاستعلام عن حالة القضية فقط ولا تُعد استشارة قانونية.';
+
+const M = {
+  welcome: (name) =>
+    `أهلاً ${name} 👋\nمرحباً بك في خدمة الاستعلام الآلي لـ${OFFICE_NAME}.\n\n` +
+    'اختر من القائمة بإرسال الرقم:\n1️⃣ حالة قضاياي\n2️⃣ موعد الجلسة القادمة\n3️⃣ التحدث مع موظف\n\n' +
+    'أو أرسل رقم القضية مباشرة.',
+
+  unknownCaller: () =>
+    'عذراً، لم نجد أي قضايا مرتبطة برقم الجوال الذي تراسلنا منه.\n\n' +
+    'إذا كنت من عملاء المكتب، فقد يكون رقمك مسجّلاً لدينا بصيغة أخرى.\n' +
+    `يرجى التواصل مع ${OFFICE_NAME} على: ${OFFICE_CONTACT}`,
+
+  caseCard: (c) => {
+    const l = [`📁 *القضية ${c.case_number}*`, `👤 الموكل: ${c.client_name}`];
+    if (c.case_type) l.push(`⚖️ النوع: ${c.case_type}`);
+    if (c.court) l.push(`🏛️ المحكمة: ${c.court}`);
+    if (c.status) l.push(`📌 الحالة: ${c.status}`);
+    if (c.next_hearing_date) {
+      const t = c.next_hearing_time ? ' الساعة ' + c.next_hearing_time : '';
+      l.push(`📅 الجلسة القادمة: ${formatHearingDate(c.next_hearing_date)}${t}`);
+    } else {
+      l.push('📅 الجلسة القادمة: لم يُحدَّد موعد بعد');
+    }
+    if (c.last_update_note) l.push(`📝 آخر تحديث: ${c.last_update_note}`);
+    if (c.assigned_lawyer) l.push(`👔 المحامي المسؤول: ${c.assigned_lawyer}`);
+    l.push('', `_${DISCLAIMER}_`);
+    return l.join('\n');
+  },
+
+  caseList: (items) => {
+    const l = [`لديك ${items.length} قضايا مسجّلة لدى المكتب:`, ''];
+    items.forEach((c, i) => {
+      l.push(`${i + 1}. ${c.case_number} (${c.case_type || 'غير محدد'})${c.status ? ' — ' + c.status : ''}`);
+    });
+    l.push('', 'أرسل رقم الخيار لعرض التفاصيل، أو 0 للرجوع للقائمة الرئيسية.');
+    return l.join('\n');
+  },
+
+  hearingsSummary: (items) => {
+    const up = items.filter((c) => c.next_hearing_date)
+                    .sort((a, b) => a.next_hearing_date.localeCompare(b.next_hearing_date));
+    if (!up.length) {
+      return 'لا توجد جلسات محددة حالياً في أي من قضاياك.\nسيتم تحديث البيانات فور تحديد المحكمة للموعد.';
+    }
+    const l = ['📅 *جلساتك القادمة:*', ''];
+    for (const c of up) {
+      const t = c.next_hearing_time ? ' الساعة ' + c.next_hearing_time : '';
+      l.push(`• ${c.case_number}: ${formatHearingDate(c.next_hearing_date)}${t}`);
+      if (c.court) l.push('  ' + c.court);
+    }
+    l.push('', 'أرسل 0 للرجوع للقائمة الرئيسية.');
+    return l.join('\n');
+  },
+
+  caseNotFound: (q) =>
+    `لم نجد قضية بالرقم "${q}" ضمن قضاياك المسجّلة.\n\nتأكد من رقم القضية، أو أرسل 1 لعرض قائمة قضاياك.`,
+
+  handoff: () =>
+    `سيتم تحويلك لأحد موظفي ${OFFICE_NAME}.\nللاستعجال يمكنك الاتصال مباشرة على: ${OFFICE_CONTACT}\n\n` +
+    'أوقات العمل: الأحد إلى الخميس، 9 صباحاً – 5 مساءً.',
+
+  fallback: () =>
+    'لم أفهم طلبك 🤔\n\nيمكنك إرسال:\n1️⃣ لعرض حالة قضاياك\n2️⃣ لمعرفة موعد الجلسة القادمة\n' +
+    '3️⃣ للتحدث مع موظف\n\nأو أرسل رقم القضية مباشرة.',
+
+  legalQuestion: () =>
+    'سؤالك يحتاج مراجعة المحامي المختص، ولا يمكن للخدمة الآلية الإجابة عليه.\n\n' +
+    `تم تسجيل طلبك وسيتواصل معك المكتب. للاستعجال: ${OFFICE_CONTACT}`,
+
+  serviceError: () => 'حدث خلل مؤقت في الخدمة 🙏',
+};
+
+/* ==========================================================================
+   4) منطق المحادثة — مطابق src/bot/handler.js
+   ========================================================================== */
+const GREETINGS = ['السلام','سلام','مرحبا','مرحبتين','هلا','اهلا','أهلا','صباح','مساء','hi','hello','start','ابدأ','البدايه','البداية'];
+const MENU_WORDS = ['قائمة','القائمة','خيارات','رجوع','menu'];
+const HANDOFF_WORDS = ['موظف','محامي','اتصال','تحويل','اكلم','أكلم','بشر','استفسار'];
+const HEARING_WORDS = ['جلسة','جلسه','الجلسة','الجلسه','موعد','مواعيد','جلسات'];
+const STATUS_WORDS = ['حالة','حاله','وضع','قضاياي','قضيتي','قضايا','ملفي','مستجدات','تحديث'];
+const LEGAL_HINTS = ['ليش','لماذا','كيف','هل يمكن','هل ينفع','رأيك','نصيحة','استشارة','أستشير','اعترض','أعترض','ماذا لو','وش الحل','ايش الحل'];
+
+const hasAny = (t, words) => words.some((w) => t.includes(w));
+const looksLikeCaseNumber = (t) => /\d/.test(t) && t.length >= 3 && t.length <= 40;
+
+const sessions = new Map();
+const getSession = (phone) => {
+  if (!sessions.has(phone)) sessions.set(phone, { greeted: false, pendingList: null });
+  return sessions.get(phone);
+};
+
+function handleIncomingMessage(rawPhone, rawText) {
+  const phone = normalizePhone(rawPhone);
+  const text = toLatin(rawText).trim();
+  if (!phone) return [M.unknownCaller()];
+
+  const owned = findByPhone(phone);
+  if (!owned.length) return [M.unknownCaller()];
+
+  const s = getSession(phone);
+  const name = owned[0].client_name;
+  const out = [];
+  const lower = text.toLowerCase();
+
+  if (!s.greeted) {
+    s.greeted = true;
+    out.push(M.welcome(name));
+    if (!text || hasAny(lower, GREETINGS)) return out;
+  }
+
+  if (hasAny(lower, GREETINGS)) { s.pendingList = null; out.push(M.welcome(name)); return out; }
+
+  if (s.pendingList?.length) {
+    const i = parseInt(text, 10);
+    if (Number.isInteger(i) && i >= 1 && i <= s.pendingList.length) {
+      const item = findCaseForPhone(phone, s.pendingList[i - 1]);
+      s.pendingList = null;
+      out.push(item ? M.caseCard(item) : M.serviceError());
+      return out;
+    }
+  }
+
+  if (text === '0' || hasAny(lower, MENU_WORDS)) { s.pendingList = null; out.push(M.welcome(name)); return out; }
+
+  if (text === '1' || hasAny(lower, STATUS_WORDS)) {
+    if (owned.length === 1) { s.pendingList = null; out.push(M.caseCard(owned[0])); return out; }
+    s.pendingList = owned.map((c) => c.case_number);
+    out.push(M.caseList(owned));
+    return out;
+  }
+
+  if (text === '2' || hasAny(lower, HEARING_WORDS)) { s.pendingList = null; out.push(M.hearingsSummary(owned)); return out; }
+  if (text === '3' || hasAny(lower, HANDOFF_WORDS)) { s.pendingList = null; out.push(M.handoff()); return out; }
+  if (hasAny(lower, LEGAL_HINTS)) { s.pendingList = null; out.push(M.legalQuestion()); return out; }
+
+  if (looksLikeCaseNumber(text)) {
+    const item = findCaseForPhone(phone, text);
+    if (item) { s.pendingList = null; out.push(M.caseCard(item)); return out; }
+    const byName = findByNameForPhone(phone, text);
+    if (byName.length === 1) { out.push(M.caseCard(byName[0])); return out; }
+    if (byName.length > 1) { s.pendingList = byName.map((c) => c.case_number); out.push(M.caseList(byName)); return out; }
+    out.push(M.caseNotFound(text));
+    return out;
+  }
+
+  const byName = findByNameForPhone(phone, text);
+  if (byName.length === 1) { s.pendingList = null; out.push(M.caseCard(byName[0])); return out; }
+  if (byName.length > 1) { s.pendingList = byName.map((c) => c.case_number); out.push(M.caseList(byName)); return out; }
+
+  s.pendingList = null;
+  out.push(M.fallback());
+  return out;
+}
+
+/* ==========================================================================
+   5) الواجهة
+   ========================================================================== */
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+let current = null;
+let busy = false;
+
+const time = () => new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const waFormat = (s) => esc(s)
+  .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+  .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+
+function bubble(text, dir) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + dir;
+  el.innerHTML = waFormat(text) + '<span class="t">' + time() + '</span>';
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function sysline(text) {
+  const el = document.createElement('div');
+  el.className = 'sysline';
+  el.textContent = text;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function typing(on) {
+  document.querySelector('.typing')?.remove();
+  if (!on) return;
+  const el = document.createElement('div');
+  el.className = 'typing';
+  el.innerHTML = '<i></i><i></i><i></i>';
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+/* الشخصيات: عميل لكل رقم في البيانات، مع رقم غريب لعرض الخصوصية */
+const people = [];
+for (const c of INDEX) {
+  let p = people.find((x) => x.phone === c.phone_normalized);
+  if (!p) people.push(p = { phone: c.phone_normalized, name: c.client_name, cases: 0 });
+  p.cases++;
+}
+people.push({ phone: '966599999999', name: 'رقم غير مسجّل', cases: 0, stranger: true });
+
+const strip = document.getElementById('personas');
+people.forEach((p, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'persona' + (p.stranger ? ' stranger' : '');
+  btn.type = 'button';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.innerHTML = '<b>' + esc(p.name) + '</b><span>' + p.phone +
+    (p.stranger ? ' · اختبار الخصوصية' : ' · ' + p.cases + ' قضية') + '</span>';
+  btn.onclick = () => pick(p, btn);
+  strip.appendChild(btn);
+  if (i === 0) queueMicrotask(() => pick(p, btn));
+});
+
+function pick(person, btn) {
+  current = person;
+  sessions.delete(person.phone); // كل عرض يبدأ من جلسة نظيفة
+  document.querySelectorAll('.persona').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+  btn.setAttribute('aria-pressed', 'true');
+  document.getElementById('peerName').textContent = OFFICE_NAME;
+  document.getElementById('peerPhone').textContent = 'تراسل من ' + person.phone;
+  chat.innerHTML = '';
+  sysline(person.stranger
+    ? 'أنت الآن رقم غير مسجّل لدى المكتب'
+    : 'أنت الآن ' + person.name);
+}
+
+const SUGGESTIONS = [
+  'السلام عليكم', '1', '2', '3', '1445/ت/2301', 'متى موعد جلستي', 'هل ينفع أعترض على الحكم؟', '9999',
+];
+const suggestBox = document.getElementById('suggest');
+for (const s of SUGGESTIONS) {
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.type = 'button';
+  chip.textContent = s;
+  chip.onclick = () => send(s);
+  suggestBox.appendChild(chip);
+}
+
+async function send(text) {
+  if (busy || !current || !text.trim()) return;
+  busy = true;
+  sendBtn.disabled = true;
+  bubble(text, 'out');
+  input.value = '';
+
+  const replies = handleIncomingMessage(current.phone, text);
+  const pause = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
+
+  for (const reply of replies) {
+    typing(true);
+    await new Promise((r) => setTimeout(r, pause ? 520 : 0));
+    typing(false);
+    bubble(reply, 'in');
+    await new Promise((r) => setTimeout(r, pause ? 180 : 0));
+  }
+
+  busy = false;
+  sendBtn.disabled = false;
+}
+
+document.getElementById('composer').addEventListener('submit', (e) => {
+  e.preventDefault();
+  send(input.value);
+});
+</script>
+</body>
+</html>
