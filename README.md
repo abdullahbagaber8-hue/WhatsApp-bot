@@ -160,34 +160,82 @@ server {
 
 ## النشر على Oracle Cloud (Free Tier)
 
-الـ Free Tier كافٍ تماماً لهذا الحمل. الخطوات على خادم Ubuntu:
+الـ Free Tier كافٍ تماماً لهذا الحمل.
+
+### 0) اعرف سيرفرك أولاً
+
+نظام Oracle الافتراضي هو **Oracle Linux** لا Ubuntu، والأوامر تختلف. شغّل على السيرفر:
 
 ```bash
-# 1) Node.js 20
+bash scripts/server-check.sh
+```
+
+يطبع التوزيعة والمعمارية وما هو مثبّت وحالة الجدران النارية، ويحدد أي مسار تتبع أدناه.
+(قراءة فقط، لا يغيّر شيئاً.)
+
+### 1) تثبيت Node.js 20
+
+```bash
+# Ubuntu / Debian
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# 2) المشروع
+# Oracle Linux / RHEL / Rocky
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo -E bash -
+sudo dnf install -y nodejs
+```
+
+المعمارية (ARM أو x86) لا تهم — Node يعمل على الاثنين، والمشروع بلا مكتبات مبنية أصلاً.
+
+### 2) المشروع
+
+```bash
 git clone <رابط-المستودع> ~/whatsapp-bot && cd ~/whatsapp-bot
 npm install --omit=dev
 cp .env.example .env && nano .env      # املأ المفاتيح وضع SIMULATOR_ENABLED=false
+```
 
-# 3) تشغيل دائم
+### 3) تشغيل دائم
+
+```bash
 sudo npm install -g pm2
 pm2 start src/index.js --name whatsapp-bot
 pm2 save && pm2 startup
 ```
 
-**مهم في Oracle Cloud تحديداً:** فتح المنفذ يحتاج خطوتين — جدار Oracle وجدار الخادم:
+### 4) فتح المنفذ — خطوتان في Oracle، لا واحدة
 
-1. في لوحة Oracle: `Networking → VCN → Security Lists` أضف Ingress Rule للمنفذ 443.
-2. داخل الخادم، أوراكل تضع قواعد iptables افتراضية تمنع المنافذ:
-   ```bash
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-   sudo netfilter-persistent save
-   ```
+هذي أكثر نقطة يعلق فيها الناس: تفتح المنفذ من اللوحة ويظل مقفولاً، لأن أوراكل تضع جداراً ثانياً داخل الخادم نفسه.
 
-**واتساب يشترط HTTPS للـ Webhook.** بما أن السيرفر يستضيف موقع العميل أصلاً، أضف البوت كـ subdomain خلف Nginx:
+**أ) لوحة Oracle:** `Networking → VCN → Security Lists` → أضف Ingress Rule للمنفذ 443.
+
+**ب) داخل الخادم:**
+
+```bash
+# Ubuntu (أوراكل تثبّت قواعد iptables تمنع المنافذ افتراضياً)
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save
+
+# Oracle Linux (يستخدم firewalld)
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+### 5) فخ SELinux — على Oracle Linux فقط
+
+SELinux مفعّل افتراضياً على Oracle Linux، **ويمنع Nginx من تمرير الطلبات للبوت**. النتيجة: كل شيء يبدو صحيحاً لكن المتصفح يعطي `502 Bad Gateway` بلا سبب ظاهر.
+
+```bash
+sudo setsebool -P httpd_can_network_connect 1
+```
+
+سطر واحد، لكن بدونه تضيع ساعات. (لا يوجد SELinux على Ubuntu — تجاوز هذه الخطوة.)
+
+### 6) HTTPS — واتساب يشترطه للـ Webhook
+
+بما أن السيرفر يستضيف موقع العميل أصلاً، أضف البوت كنطاق فرعي خلف خادم الويب الموجود. اعرف أيهما يعمل من `server-check.sh`:
+
+**Nginx:**
 
 ```nginx
 server {
@@ -200,7 +248,24 @@ server {
 }
 ```
 
-ثم `sudo certbot --nginx -d bot.example.com` للحصول على شهادة مجانية.
+**Apache** (يحتاج تفعيل الوحدات أولاً: `sudo a2enmod proxy proxy_http` على Ubuntu):
+
+```apache
+<VirtualHost *:80>
+    ServerName bot.example.com
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:3000/
+    ProxyPassReverse / http://127.0.0.1:3000/
+</VirtualHost>
+```
+
+ثم الشهادة المجانية:
+
+```bash
+sudo certbot --nginx -d bot.example.com     # أو --apache
+```
+
+على Oracle Linux قد يحتاج certbot تفعيل EPEL أولاً: `sudo dnf install -y epel-release certbot`.
 
 **ملف الإكسل على السيرفر:** أبسط طريقة تبقي المكتب على عادته هي مزامنة مجلد (rclone مع OneDrive/Google Drive) ثم توجيه `EXCEL_PATH` إليه. أو يرفع المكتب الملف عبر SFTP عند التحديث.
 
