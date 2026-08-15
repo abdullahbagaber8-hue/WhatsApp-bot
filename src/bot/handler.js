@@ -10,10 +10,27 @@ import { logger } from '../utils/logger.js';
 
 const GREETINGS = ['السلام', 'سلام', 'مرحبا', 'مرحبتين', 'هلا', 'اهلا', 'أهلا', 'صباح', 'مساء', 'hi', 'hello', 'start', 'ابدأ', 'البدايه', 'البداية'];
 const MENU_WORDS = ['قائمة', 'القائمة', 'خيارات', 'رجوع', 'menu'];
-const HANDOFF_WORDS = ['موظف', 'محامي', 'اتصال', 'تحويل', 'اكلم', 'أكلم', 'بشر', 'استفسار'];
+const HANDOFF_WORDS = ['موظف', 'محامي', 'اتصال', 'تحويل', 'اكلم', 'أكلم', 'بشر', 'استفسار', 'استفسر', 'المكتب'];
 const HEARING_WORDS = ['جلسة', 'جلسه', 'الجلسة', 'الجلسه', 'موعد', 'مواعيد', 'جلسات'];
-const STATUS_WORDS = ['حالة', 'حاله', 'وضع', 'قضاياي', 'قضيتي', 'قضايا', 'ملفي', 'مستجدات', 'تحديث'];
-const LEGAL_QUESTION_HINTS = ['ليش', 'لماذا', 'كيف', 'هل يمكن', 'هل ينفع', 'رأيك', 'نصيحة', 'استشارة', 'أستشير', 'اعترض', 'أعترض', 'ماذا لو', 'وش الحل', 'ايش الحل'];
+// ملاحظة: لا تُضف هنا كلمات مثل «الحكم» أو «اعتراض» — تسبق فحص الأسئلة القانونية فتبتلعها
+const STATUS_WORDS = [
+  'حالة', 'حاله', 'وضع', 'قضاياي', 'قضيتي', 'قضايا', 'قضيه', 'القضيه', 'القضية',
+  'ملفي', 'ملف', 'الملف', 'مستجدات', 'تحديث', 'جديد', 'وصل', 'تفاصيل',
+  'صدر', 'تطور', 'دعوى', 'الدعوى', 'اخر', 'آخر',
+];
+/**
+ * أسئلة الرأي القانوني. تُفحص قبل كلمات الحالة، لأن سؤالاً مثل
+ * «ليش صدر الحكم ضدي» يحوي كلمة حالة وسؤالاً قانونياً معاً — والأولوية للثاني.
+ * لذلك تُكتب هنا عبارات محددة لا كلمات عامة مثل «كيف» وحدها.
+ */
+const LEGAL_QUESTION_HINTS = [
+  'ليش', 'لماذا', 'وش السبب', 'ايش السبب',
+  'هل يمكن', 'هل ينفع', 'هل اقدر', 'هل أقدر',
+  'كيف اقدر', 'كيف أقدر', 'كيف يمكن',
+  'رأيك', 'رايك', 'نصيحة', 'نصيحه', 'استشارة', 'استشاره', 'أستشير', 'استشير',
+  'اعترض', 'أعترض', 'اعتراض',
+  'ماذا لو', 'وش الحل', 'ايش الحل', 'وش اسوي', 'ايش اسوي',
+];
 
 const containsAny = (text, words) => words.some((word) => text.includes(word));
 
@@ -85,6 +102,13 @@ export async function handleIncomingMessage(rawPhone, rawText) {
     return respond(messages.welcome(clientName));
   }
 
+  // سؤال قانوني — يُفحص قبل كلمات الحالة كي لا تبتلعه
+  if (containsAny(lower, LEGAL_QUESTION_HINTS)) {
+    session.pendingList = null;
+    logger.warn('legal question received', { phone: maskPhone(phone) });
+    return respond(messages.legalQuestion());
+  }
+
   // 1 أو سؤال عن الحالة → عرض القضايا
   if (text === '1' || containsAny(lower, STATUS_WORDS)) {
     if (owned.length === 1) {
@@ -107,13 +131,6 @@ export async function handleIncomingMessage(rawPhone, rawText) {
     session.pendingList = null;
     logger.warn('handoff requested', { phone: maskPhone(phone) });
     return respond(messages.handoff());
-  }
-
-  // سؤال قانوني — البوت لا يجيب عليه
-  if (containsAny(lower, LEGAL_QUESTION_HINTS)) {
-    session.pendingList = null;
-    logger.warn('legal question received', { phone: maskPhone(phone) });
-    return respond(messages.legalQuestion());
   }
 
   // رقم قضية مباشر — يُبحث عنه ضمن قضايا هذا الرقم فقط

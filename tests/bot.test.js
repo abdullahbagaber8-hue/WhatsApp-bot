@@ -122,6 +122,32 @@ describe('تدفق المحادثة', () => {
     assert.match(replies[0], /يحتاج مراجعة المحامي/);
   });
 
+  test('الصيغ العامية الشائعة تُفهم بلا ذكاء اصطناعي', async () => {
+    const phrasings = [
+      'وش صار على قضيتي', 'فيه جديد؟', 'وين وصلنا', 'عطني تفاصيل الملف',
+      'هل صدر الحكم', 'شنو اخر تطور', 'تم رفع الدعوى ولا لأ',
+      'متى الجلسة الجاية', 'كم باقي على الجلسة',
+      'ودي اكلم المحامي', 'ممكن رقم المكتب', 'ابغى استفسر',
+    ];
+
+    for (const text of phrasings) {
+      resetSessions();
+      await handleIncomingMessage(MULTI_CASE_CLIENT, 'مرحبا');
+      const replies = await handleIncomingMessage(MULTI_CASE_CLIENT, text);
+      assert.doesNotMatch(replies.join('\n'), /لم أفهم طلبك/, `لم تُفهم: "${text}"`);
+    }
+  });
+
+  test('كلمات الحالة لا تبتلع الأسئلة القانونية', async () => {
+    // «الحكم» و«اعتراض» عمداً خارج قائمة كلمات الحالة، وإلا سبقت فحص الأسئلة القانونية
+    for (const text of ['هل ينفع أعترض على الحكم؟', 'ليش صدر الحكم ضدي']) {
+      resetSessions();
+      await handleIncomingMessage(MULTI_CASE_CLIENT, 'مرحبا');
+      const replies = await handleIncomingMessage(MULTI_CASE_CLIENT, text);
+      assert.match(replies[0], /يحتاج مراجعة المحامي/, `تسربت: "${text}"`);
+    }
+  });
+
   test('رقم قضية غير موجود يعطي رسالة واضحة', async () => {
     await handleIncomingMessage(MULTI_CASE_CLIENT, 'مرحبا');
     const replies = await handleIncomingMessage(MULTI_CASE_CLIENT, '9999');
